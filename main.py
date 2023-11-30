@@ -1,5 +1,7 @@
 import math
 import pygame
+import random
+import heapq
 
 # PYGAME INITIALIZE
 pygame.init()
@@ -169,15 +171,49 @@ class Bullet(pygame.sprite.Sprite):
         self.bullet_movement()
 
 
+def heuristic(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+
+def astar(grid, start, end):
+    # Implement the A* algorithm
+    heap = [(0, start)]
+    visited = set()
+    while heap:
+        (cost, current) = heapq.heappop(heap)
+        if current == end:
+            path = []
+            while current in grid:
+                path.append(current)
+                current = grid[current]
+            return path[::-1]
+        if current in visited:
+            continue
+        visited.add(current)
+        for neighbor in neighbors(current):
+            heapq.heappush(heap, (cost + 1 + heuristic(neighbor, end), neighbor))
+            if neighbor not in grid or cost + 1 < grid[neighbor]:
+                grid[neighbor] = cost + 1
+                heapq.heappush(heap, (cost + 1, neighbor))
+    return None
+
+
+def neighbors(node):
+    # Get neighboring nodes
+    x, y = node
+    return [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
+
+
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, position):
+    def __init__(self):
         super().__init__()
         self.image = pygame.image.load("images/yellow_ball.png").convert_alpha()
         self.image = pygame.transform.rotozoom(self.image, 0, 0.05)
         self.rect = self.image.get_rect()
-        self.rect.center = position
-        self.grid_size = 25
+        self.rect.center = self.get_random_position()
+        self.grid_size = 15
         self.playable_area = self.create_playable_area()
+        self.speed = 0.01
 
     def create_playable_area(self):
         # Create a 2D grid representation of the playable area
@@ -192,7 +228,7 @@ class Enemy(pygame.sprite.Sprite):
         return grid
 
     def is_within_playable_area(self, position):
-        # Your existing function to check if a position is within the playable area
+        # check if a position is within the playable area
         left_square = pygame.Rect(50, 110, 260, 430)
         hallway = pygame.Rect(310, 220, 180, 70)
         right_square = pygame.Rect(490, 110, 260, 430)
@@ -205,8 +241,41 @@ class Enemy(pygame.sprite.Sprite):
                 color = (255, 0, 0) if is_obstacle else (0, 255, 0)
                 pygame.draw.rect(screen, color, (x * self.grid_size, y * self.grid_size, self.grid_size, self.grid_size), 1)
 
+    def get_random_position(self, min_distance=200):
+        while True:
+            # Return a random position within the playable area grid
+            x = random.randint(50, 740)
+            y = random.randint(110, 590)
+
+            # Calculate distance between player and enemy
+            distance = math.hypot(x - player.pos.x, y - player.pos.y)
+
+            # Check if the distance is greater than the minimum required
+            if distance >= min_distance:
+                return x, y
+
+    def move_towards_player(self):
+        # Implement A* pathfinding to find the path towards the player
+        start = (self.rect.x // self.grid_size, self.rect.y // self.grid_size)
+        end = (player.pos.x // self.grid_size, player.pos.y // self.grid_size)
+        grid = {}
+        path = astar(grid, start, end)
+
+        if path:
+            # Move towards the next node in the path
+            next_node = path[0]
+            new_x = next_node[0] * self.grid_size
+            new_y = next_node[1] * self.grid_size
+
+            # Check if the new position is within the playable area
+            if self.is_within_playable_area((new_x, new_y)):
+                self.rect.x += int((new_x - self.rect.x) * self.speed)
+                self.rect.y += int((new_y - self.rect.y) * self.speed)
+
+
     def update(self):
         self.draw_playable_area()
+        self.move_towards_player()
 
 
 all_sprites_group = pygame.sprite.Group()
@@ -218,7 +287,7 @@ player = Player()
 
 all_sprites_group.add(player)
 
-enemy = Enemy((600, 400))
+enemy = Enemy()
 enemy_group.add(enemy)
 all_sprites_group.add(enemy)
 
