@@ -168,6 +168,7 @@ class Bullet(pygame.sprite.Sprite):
     def update_movement(self):
         self.bullet_movement()
 
+
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, position):
         super().__init__()
@@ -175,6 +176,37 @@ class Enemy(pygame.sprite.Sprite):
         self.image = pygame.transform.rotozoom(self.image, 0, 0.05)
         self.rect = self.image.get_rect()
         self.rect.center = position
+        self.grid_size = 25
+        self.playable_area = self.create_playable_area()
+
+    def create_playable_area(self):
+        # Create a 2D grid representation of the playable area
+        grid = []
+        for y in range(0, 700, self.grid_size):
+            row = []
+            for x in range(0, 800, self.grid_size):
+                pos = pygame.math.Vector2(x, y)
+                is_obstacle = not self.is_within_playable_area(pos)
+                row.append(is_obstacle)
+            grid.append(row)
+        return grid
+
+    def is_within_playable_area(self, position):
+        # Your existing function to check if a position is within the playable area
+        left_square = pygame.Rect(50, 110, 260, 430)
+        hallway = pygame.Rect(310, 220, 180, 70)
+        right_square = pygame.Rect(490, 110, 260, 430)
+        return left_square.collidepoint(position) or hallway.collidepoint(position) or right_square.collidepoint(position)
+
+    def draw_playable_area(self):
+        # Draw the playable area for visualization purposes
+        for y, row in enumerate(self.playable_area):
+            for x, is_obstacle in enumerate(row):
+                color = (255, 0, 0) if is_obstacle else (0, 255, 0)
+                pygame.draw.rect(screen, color, (x * self.grid_size, y * self.grid_size, self.grid_size, self.grid_size), 1)
+
+    def update(self):
+        self.draw_playable_area()
 
 
 all_sprites_group = pygame.sprite.Group()
