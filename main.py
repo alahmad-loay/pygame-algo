@@ -1,19 +1,71 @@
-import math
+import sys
 import pygame
-import random
+import math
 import heapq
+import random
 
-# PYGAME INITIALIZE
 pygame.init()
 
-# CREATE SCREEN/WINDOW
 screen = pygame.display.set_mode((800, 700))
 pygame.display.set_caption("shooter game thingy idk")
 clock = pygame.time.Clock()
 
-# LOAD BACKGROUND
 background = pygame.transform.scale(pygame.image.load("images/MAP.png").convert(), (800, 700))
+# Load the shooting sound
+shooting_sound = pygame.mixer.Sound("308 Single.mp3")
+shooting_sound.set_volume(0.2)
 
+# Load the sound for start menu and retry menu on channel 1
+background_music = pygame.mixer.Sound("Action 1.mp3")
+pygame.mixer.Channel(1).set_volume(0.5)
+pygame.mixer.Channel(1).play(background_music, -1)
+pygame.mixer.Channel(1).stop()
+
+# Load the sound for start menu and retry menu on channel 1
+start_menu_sound = pygame.mixer.Sound("Ambient 2.mp3")
+pygame.mixer.Channel(1).set_volume(0.5)
+pygame.mixer.Channel(0).play(start_menu_sound, -1)
+pygame.mixer.Channel(1).stop()
+
+
+def start_menu():
+    menu_font = pygame.font.Font(None, 48)
+    menu_text = menu_font.render("Press 'Space' to Start", True, (255, 255, 255))
+    text_rect = menu_text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2))
+    pygame.mixer.Channel(0).play(start_menu_sound, loops=-1)
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                # Stop the start menu sound when the space key is pressed
+                pygame.mixer.Channel(0).stop()
+                pygame.mixer.Channel(1).play(background_music, loops=-1)
+                return  # Exit the start menu if the space key is pressed
+
+        screen.blit(background, (0, 0))
+        screen.blit(menu_text, text_rect)
+        pygame.display.update()
+
+
+def is_within_playable_area(position):
+    left_square = pygame.Rect(45, 110, 250, 440)
+    hallway = pygame.Rect(300, 220, 180, 53)
+    right_square = pygame.Rect(480, 110, 260, 440)
+    return left_square.collidepoint(position) or hallway.collidepoint(position) or right_square.collidepoint(position)
+
+def create_playable_area_grid(grid_size):
+    grid = []
+    for y in range(0, 700, grid_size):
+        row = []
+        for x in range(0, 800, grid_size):
+            pos = pygame.math.Vector2(x, y)
+            is_obstacle = not is_within_playable_area(pos)
+            row.append(is_obstacle)
+        grid.append(row)
+    return grid
 
 # PLAYER
 class Player(pygame.sprite.Sprite):
@@ -34,7 +86,9 @@ class Player(pygame.sprite.Sprite):
         self.shoot_cooldown = 0
         self.health = 100
         self.max_health = 100
-        self.gun_barrel_offset = pygame.math.Vector2(-10, -40)  # ill come back to it
+        self.gun_barrel_offset = pygame.math.Vector2(2, -40)
+        self.grid_size = 15
+        self.playable_area_grid = create_playable_area_grid(self.grid_size)
 
     # ROTATION
     def player_rotation(self):
@@ -68,8 +122,9 @@ class Player(pygame.sprite.Sprite):
             self.velocity_x /= math.sqrt(2)
         # for bullet
         if pygame.mouse.get_pressed() == (1, 0, 0):
-            self.shoot = True
-            self.is_shooting()
+            if not self.shoot:
+                self.shoot = True
+                self.is_shooting()
         else:
             self.shoot = False
 
@@ -80,30 +135,23 @@ class Player(pygame.sprite.Sprite):
             self.bullet = Bullet(spawn_bullet_pos[0], spawn_bullet_pos[1], self.angle)
             bullet_group.add(self.bullet)
             all_sprites_group.add(self.bullet)
+            # Play the shooting sound
+            shooting_sound.play()
 
     # CHANGE POSITION
     def move(self):
         new_pos = self.pos + pygame.math.Vector2(self.velocity_x, self.velocity_y)
-        if self.is_within_playable_area(new_pos):
-            self.pos = new_pos
+        grid_x = int(new_pos.x / self.grid_size)
+        grid_y = int(new_pos.y / self.grid_size)
+
+        # Check if the new position is within the playable area grid
+        if 0 <= grid_x < len(self.playable_area_grid[0]) and 0 <= grid_y < len(self.playable_area_grid):
+            # Check if the new position is not an obstacle in the grid
+            if not self.playable_area_grid[grid_y][grid_x]:
+                self.pos = new_pos
+
         self.hitbox_rect.center = self.pos
         self.rect.center = self.hitbox_rect.center
-
-    def is_within_playable_area(self, new_pos):
-        # Define boundaries for the left square region
-        left_square = pygame.Rect(50, 110, 260, 430)  # Adjust these values as needed
-
-        # Define boundaries for the hallway region
-        hallway = pygame.Rect(310, 220, 180, 70)  # Adjust these values as needed
-
-        # Define boundaries for the right square region
-        right_square = pygame.Rect(490, 110, 260, 430)  # Adjust these values as needed
-
-        # Check if the new position is within the left square, hallway, or right square
-        if left_square.collidepoint(new_pos) or hallway.collidepoint(new_pos) or right_square.collidepoint(new_pos):
-            return True  # Player is within the left square, hallway, or right square
-        else:
-            return False  # Player is outside the left square, hallway, and right square
 
     # DRAW HEALTH TEXT
     def draw_health_text(self):
@@ -111,6 +159,7 @@ class Player(pygame.sprite.Sprite):
         health_text = font.render('Health:', True, (255, 255, 255))
         text_rect = health_text.get_rect(center=((screen.get_width() // 2) - 100, 15))
         screen.blit(health_text, text_rect)
+
     # DRAW HEALTH BAR
     def draw_health_bar(self):
         # Calculate health ratio
@@ -131,7 +180,6 @@ class Player(pygame.sprite.Sprite):
         # Blit the health bar onto the screen
         screen.blit(health_bar_surface, health_bar_pos)
 
-
     # UPDATE PLAYER STATE
     def update(self):
         self.user_input()
@@ -145,7 +193,7 @@ class Player(pygame.sprite.Sprite):
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, x, y, bullet_angle):
         super().__init__()
-        self.image = pygame.transform.rotozoom(pygame.image.load('images/bullet.png').convert_alpha(), 0, 1.5)
+        self.image = pygame.transform.rotozoom(pygame.image.load('images/bullet.png').convert_alpha(), 0, 1.2)
         self.rect = self.image.get_rect()
         self.rect.center = (x, y)
         self.x = x
@@ -170,112 +218,253 @@ class Bullet(pygame.sprite.Sprite):
     def update_movement(self):
         self.bullet_movement()
 
+        # Check for collisions with the enemy
+        enemy_hit = pygame.sprite.spritecollide(self, enemy_group, False)
+        for enemy in enemy_hit:
+            # Decrease enemy health and kill the bullet
+            enemy.health -= 30
+            self.kill()
 
-def heuristic(a, b):
-    return abs(a[0] - b[0]) + abs(a[1] - b[1])
-
-
-def astar(grid, start, end):
-    # Implement the A* algorithm
-    heap = [(0, start)]
-    visited = set()
-    while heap:
-        (cost, current) = heapq.heappop(heap)
-        if current == end:
-            path = []
-            while current in grid:
-                path.append(current)
-                current = grid[current]
-            return path[::-1]
-        if current in visited:
-            continue
-        visited.add(current)
-        for neighbor in neighbors(current):
-            heapq.heappush(heap, (cost + 1 + heuristic(neighbor, end), neighbor))
-            if neighbor not in grid or cost + 1 < grid[neighbor]:
-                grid[neighbor] = cost + 1
-                heapq.heappush(heap, (cost + 1, neighbor))
-    return None
-
-
-def neighbors(node):
-    # Get neighboring nodes
-    x, y = node
-    return [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
-
+        # Check if the bullet is out of the screen or hits the non-playable area
+        if (
+                self.rect.x < 0
+                or self.rect.y < 0
+                or self.rect.x > screen.get_width()
+                or self.rect.y > screen.get_height()
+                or not is_within_playable_area((self.rect.x, self.rect.y))
+        ):
+            self.kill()
 
 class Enemy(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        self.image = pygame.image.load("images/yellow_ball.png").convert_alpha()
-        self.image = pygame.transform.rotozoom(self.image, 0, 0.05)
+        original_image = pygame.image.load("images/zombiebasic.png").convert_alpha()
+        self.image = pygame.transform.rotozoom(original_image, 0, 0.7)
+        self.base_image = self.image.copy()  # Store the original rotated image
         self.rect = self.image.get_rect()
-        self.rect.center = self.get_random_position()
+        self.hitbox_rect = self.base_image.get_rect(center=self.rect.center)
         self.grid_size = 15
-        self.playable_area = self.create_playable_area()
-        self.speed = 0.01
+        self.speed = 3
+        self.path = []  # Store the path calculated by A*
+        self.path_update_timer = 100  # Timer to control path updates
+        self.spawned = False  # Flag to check if the enemy has been spawned
+        self.rotation_angle = 0  # Initial rotation angle
+        self.health = 100
 
-    def create_playable_area(self):
-        # Create a 2D grid representation of the playable area
-        grid = []
-        for y in range(0, 700, self.grid_size):
-            row = []
-            for x in range(0, 800, self.grid_size):
-                pos = pygame.math.Vector2(x, y)
-                is_obstacle = not self.is_within_playable_area(pos)
-                row.append(is_obstacle)
-            grid.append(row)
-        return grid
+    def update_rotation(self, target_x, target_y):
+        angle = math.degrees(math.atan2(target_y - self.rect.centery, target_x - self.rect.centerx))
+        self.rotation_angle = -angle - 90
+        self.image = pygame.transform.rotate(self.base_image, self.rotation_angle)
+        self.rect = self.image.get_rect(center=self.rect.center)
+        self.hitbox_rect.center = self.rect.center  # Recalculate hitbox_rect position
 
-    def is_within_playable_area(self, position):
-        # check if a position is within the playable area
-        left_square = pygame.Rect(50, 110, 260, 430)
-        hallway = pygame.Rect(310, 220, 180, 70)
-        right_square = pygame.Rect(490, 110, 260, 430)
-        return left_square.collidepoint(position) or hallway.collidepoint(position) or right_square.collidepoint(position)
+    def spawn_randomly(self, playable_area_grid, player_position, min_distance):
+        if not self.spawned:
+            x, y = self.get_random_position(playable_area_grid, self.grid_size)
+            distance_to_player = pygame.math.Vector2(x - player_position.x, y - player_position.y).length()
 
-    def draw_playable_area(self):
-        # Draw the playable area for visualization purposes
-        for y, row in enumerate(self.playable_area):
-            for x, is_obstacle in enumerate(row):
-                color = (255, 0, 0) if is_obstacle else (0, 255, 0)
-                pygame.draw.rect(screen, color, (x * self.grid_size, y * self.grid_size, self.grid_size, self.grid_size), 1)
+            if distance_to_player >= min_distance:
+                self.rect.topleft = (x, y)
+                self.spawned = True  # Set the spawned flag to True
 
-    def get_random_position(self, min_distance=200):
-        while True:
-            # Return a random position within the playable area grid
-            x = random.randint(50, 740)
-            y = random.randint(110, 590)
+    def get_random_position(self, playable_area_grid, grid_size):
+        valid_positions = []
 
-            # Calculate distance between player and enemy
-            distance = math.hypot(x - player.pos.x, y - player.pos.y)
+        for y in range(0, len(playable_area_grid) * grid_size, grid_size):
+            for x in range(0, len(playable_area_grid[0]) * grid_size, grid_size):
+                grid_x = int(x / grid_size)
+                grid_y = int(y / grid_size)
 
-            # Check if the distance is greater than the minimum required
-            if distance >= min_distance:
-                return x, y
+                if 0 <= grid_x < len(playable_area_grid[0]) and 0 <= grid_y < len(playable_area_grid):
+                    if not playable_area_grid[grid_y][grid_x]:
+                        valid_positions.append((x, y))
 
-    def move_towards_player(self):
-        # Implement A* pathfinding to find the path towards the player
-        start = (self.rect.x // self.grid_size, self.rect.y // self.grid_size)
-        end = (player.pos.x // self.grid_size, player.pos.y // self.grid_size)
-        grid = {}
-        path = astar(grid, start, end)
+        if valid_positions:
+            return random.choice(valid_positions)
+        else:
+            # If no valid position is found, return a default position
+            return 0, 0
 
-        if path:
-            # Move towards the next node in the path
-            next_node = path[0]
-            new_x = next_node[0] * self.grid_size
-            new_y = next_node[1] * self.grid_size
+    def get_grid_position(self):
+        return int(self.rect.x / self.grid_size), int(self.rect.y / self.grid_size)
 
-            # Check if the new position is within the playable area
-            if self.is_within_playable_area((new_x, new_y)):
-                self.rect.x += int((new_x - self.rect.x) * self.speed)
-                self.rect.y += int((new_y - self.rect.y) * self.speed)
+    # A star algorithm
+    def update_path_to_player(self, player_pos, playable_area_grid):
+        start = self.get_grid_position()
+        goal = (int(player_pos.x / self.grid_size), int(player_pos.y / self.grid_size))
+        moves = [(0, -1), (0, 1), (-1, 0), (1, 0)]
+        open_set = []
+        heapq.heappush(open_set, (0, start))
+        cost_to_point = {start: 0}
+        came_from = {start: None}
 
+        while open_set:
+            current_cost, current_point = heapq.heappop(open_set)
+
+            if current_point == goal:
+                # Reconstruct the path
+                path = []
+                while current_point:
+                    path.append(current_point)
+                    current_point = came_from[current_point]
+                self.path = path[::-1]
+                return
+
+            for move in moves:
+                new_point = (current_point[0] + move[0], current_point[1] + move[1])
+
+                if (
+                        0 <= new_point[0] < len(playable_area_grid[0])
+                        and 0 <= new_point[1] < len(playable_area_grid)
+                        and not playable_area_grid[new_point[1]][new_point[0]]
+                ):
+                    new_cost = cost_to_point[current_point] + 1
+                    if (
+                            new_point not in cost_to_point
+                            or new_cost < cost_to_point[new_point]
+                    ):
+                        cost_to_point[new_point] = new_cost
+                        priority = (new_cost + self.heuristic(new_point, goal), new_point)
+                        heapq.heappush(open_set, priority)
+                        came_from[new_point] = current_point
+
+        self.path = []  # If no path is found, clear the existing path
+
+    def heuristic(self, a, b):
+        # heuristic using Euclidean distance
+        return math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
+
+    def draw_hitbox(self):
+        pygame.draw.rect(screen, (255, 0, 0), self.rect, 2)
+
+    def move_towards_player_astar(self, playable_area_grid):
+        if self.path:
+            for next_point in reversed(self.path):
+                target_x = next_point[0] * self.grid_size + self.grid_size / 2
+                target_y = next_point[1] * self.grid_size + self.grid_size / 2
+
+                direction = pygame.math.Vector2(target_x - self.rect.x, target_y - self.rect.y).normalize()
+                new_rect = self.rect.move(direction.x * self.speed, direction.y * self.speed)
+
+                grid_x = int(new_rect.x / self.grid_size)
+                grid_y = int(new_rect.y / self.grid_size)
+
+                if (
+                        0 <= grid_x < len(playable_area_grid[0])
+                        and 0 <= grid_y < len(playable_area_grid)
+                        and not playable_area_grid[grid_y][grid_x]
+                ):
+                    self.rect = new_rect
+                    break  # Exit the loop if a valid position is found
+
+    def draw_health_bar(self):
+        # Calculate health ratio
+        health_ratio = self.health / 100
+        # Set the dimensions of the health bar
+        bar_width = 40
+        bar_height = 5
+        # Calculate the width of the colored portion of the health bar
+        health_bar_width = int(bar_width * health_ratio)
+        # Create a surface for the health bar
+        health_bar_surface = pygame.Surface((bar_width, bar_height), pygame.SRCALPHA)
+        # Draw the background of the health bar
+        pygame.draw.rect(health_bar_surface, (255, 255, 255), (0, 0, bar_width, bar_height))
+        # Choose the color based on health status
+        if health_ratio > 0.6:
+            color = (0, 255, 0)  # Green
+        elif health_ratio > 0.3:
+            color = (255, 255, 0)  # Yellow
+        else:
+            color = (255, 0, 0)  # Red
+        # Draw the colored portion representing the health
+        pygame.draw.rect(health_bar_surface, color, (0, 0, health_bar_width, bar_height))
+        # Set the position to display the health bar above the enemy
+        health_bar_pos = (self.rect.centerx - bar_width // 2, self.rect.y - 10)
+        # Blit the health bar onto the screen
+        screen.blit(health_bar_surface, health_bar_pos)
 
     def update(self):
-        self.draw_playable_area()
-        self.move_towards_player()
+        if not self.spawned:
+            self.spawn_randomly(player.playable_area_grid, player.pos, 150)
+        else:
+            if self.path_update_timer <= 0:
+                self.update_path_to_player(player.pos, player.playable_area_grid)
+                self.path_update_timer = 10
+            else:
+                self.path_update_timer -= 1
+
+            # Pass playable_area_grid to move_towards_player_astar
+            self.move_towards_player_astar(player.playable_area_grid)
+
+            # Update the enemy's rotation
+            self.update_rotation(player.pos.x, player.pos.y)
+            # Draw the enemy health bar
+            self.draw_health_bar()
+            # Check if the enemy has reached the player's hitbox
+            if self.rect.colliderect(player.hitbox_rect):
+                player.health -= 30
+                self.kill()  # Remove the enemy if there's a collision
+            else:
+                # Check if the enemy's health is 0 or less, and kill it
+                if self.health <= 0:
+                    self.kill()
+
+# Function to spawn enemies
+def spawn_enemies(wave_number):
+    enemies = pygame.sprite.Group()
+
+    for i in range(wave_number):
+        enemy = Enemy()
+        enemy_group.add(enemy)
+        all_sprites_group.add(enemy)
+        enemies.add(enemy)
+
+    return enemies
+
+def game_over_screen(wave_number):
+    screen.blit(background, (0, 0))  # Display the background map
+
+    # Display you died mssg
+    font = pygame.font.Font(None, 48)
+    game_over_text = font.render('You Died', True, (255, 0, 0))
+    text_rect = game_over_text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 - 50))
+    screen.blit(game_over_text, text_rect)
+
+    # Display wave number
+    wave_font = pygame.font.Font(None, 36)
+    wave_text = wave_font.render(f'Wave: {wave_number}', True, (255, 255, 255))
+    wave_rect = wave_text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2))
+    screen.blit(wave_text, wave_rect)
+
+    # Display retry message
+    retry_font = pygame.font.Font(None, 30)
+    retry_text = retry_font.render('Press Space to Retry', True, (255, 255, 255))
+    retry_rect = retry_text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 + 50))
+    screen.blit(retry_text, retry_rect)
+
+    pygame.display.update()
+    pygame.mixer.Channel(1).stop()
+    pygame.mixer.Channel(0).play(start_menu_sound, loops=-1)
+
+    # Wait for the player to press space to retry
+    space_pressed = False
+    while not space_pressed:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                space_pressed = True
+
+    # Kill all enemies before retrying
+    for enemy in enemy_group.sprites():
+        enemy.kill()
+
+    pygame.mixer.Channel(0).stop()
+    pygame.mixer.Channel(1).play(background_music, loops=-1)
+    return True  # Retry the game
+
+
 
 
 all_sprites_group = pygame.sprite.Group()
@@ -284,18 +473,19 @@ enemy_group = pygame.sprite.Group()
 
 # CREATE INSTANCE OF PLAYER
 player = Player()
-
 all_sprites_group.add(player)
 
-enemy = Enemy()
-enemy_group.add(enemy)
-all_sprites_group.add(enemy)
+current_wave = 1
+enemies = spawn_enemies(current_wave)
 
 # GAME LOOP
 running = True
+show_menu = True
 while running:
-
-    # fill the screen with a color to wipe away anything from last frame
+    if show_menu:
+        start_menu()
+        show_menu = False
+        # fill the screen with a color to wipe away anything from last frame
     screen.blit(background, (0, 0))
 
     # HANDLE EVENTS/ pygame.QUIT event means the user clicked X to close your window
@@ -306,22 +496,33 @@ while running:
     player.draw_health_text()
     player.draw_health_bar()
 
-    pygame.draw.rect(screen, "red", player.hitbox_rect, width=2)
-    pygame.draw.rect(screen, "yellow", player.rect, width=2)
+    # Render the wave number on the top left of the screen
+    font = pygame.font.Font(None, 36)
+    wave_text = font.render(f'Wave: {current_wave}', True, (255, 255, 255))
+    screen.blit(wave_text, (10, 10))
 
     for bullet in bullet_group.sprites():
         bullet.update_movement()
 
-    # Check for collisions between the player's hitbox and the enemy's sprite
-    # CHANGE POSITION AND MAKE A FUNCTION DO NOT LEAVE IT IN GAME LOOP
-    for enemy in enemy_group.sprites():
-        if player.hitbox_rect.colliderect(enemy.rect):
-            player.health -= 30
-            enemy.kill()  # Remove the enemy if there's a collision
+    # Check if all enemies are killed
+    if len(enemies) == 0:
+        current_wave += 1
+        enemies = spawn_enemies(current_wave)
 
     # RENDER PLAYER AND BULLET // CALL FUNCTION TO UPDATE THEIR STATES
     all_sprites_group.draw(screen)
     all_sprites_group.update()
+
+    # Check if player's health is zero or less
+    if player.health <= 0:
+        # Display game over screen
+        if game_over_screen(current_wave):
+            # Reset game state
+            player.health = 100
+            current_wave = 1
+            enemies = spawn_enemies(current_wave)
+        else:
+            running = False  # Exit the game
 
     pygame.display.update()
     clock.tick(60)  # limits FPS to 60
