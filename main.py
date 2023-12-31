@@ -51,8 +51,8 @@ def start_menu():
 
 
 def is_within_playable_area(position):
-    left_square = pygame.Rect(45, 110, 250, 440)
-    hallway = pygame.Rect(300, 220, 180, 53)
+    left_square = pygame.Rect(45, 110, 260, 440)
+    hallway = pygame.Rect(300, 200, 180, 80)
     right_square = pygame.Rect(480, 110, 260, 440)
     return left_square.collidepoint(position) or hallway.collidepoint(position) or right_square.collidepoint(position)
 
@@ -239,7 +239,7 @@ class Enemy(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
         original_image = pygame.image.load("images/zombiebasic.png").convert_alpha()
-        self.image = pygame.transform.rotozoom(original_image, 0, 0.7)
+        self.image = pygame.transform.rotozoom(original_image, 0, 0.6)
         self.base_image = self.image.copy()  # Store the original rotated image
         self.rect = self.image.get_rect()
         self.hitbox_rect = self.base_image.get_rect(center=self.rect.center)
